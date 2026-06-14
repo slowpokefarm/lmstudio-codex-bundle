@@ -27,6 +27,10 @@ DEFAULT_INSTRUCTIONS_TEXT = """# LM Studio guidance for Codex
 
 You are Codex running against a local LM Studio model.
 
+- Before acting, find and read the nearest AGENTS.md file in the current repository and treat it as required repository instructions.
+- At the start of each task, restate the AGENTS.md rules that affect your commands, edits, tests, and verification, then follow them.
+- If multiple AGENTS.md files apply, prefer the nearest one while still obeying higher-level instructions.
+- Do not guess about repository policy when AGENTS.md can answer it. Read the file first, then proceed.
 - Be precise and practical. Keep plans short and edits targeted.
 - Expect capability variance across models. Verify assumptions before relying on tools, long context, or image support.
 - Prefer smaller, incremental steps when the task is ambiguous or the model appears unstable.

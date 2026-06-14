@@ -36,6 +36,7 @@ class BundleTests(unittest.TestCase):
                 result.instructions_path.read_text(encoding="utf-8"),
                 DEFAULT_INSTRUCTIONS_TEXT,
             )
+            self.assertIn("read the nearest AGENTS.md file", DEFAULT_INSTRUCTIONS_TEXT)
 
     def test_bootstrap_merges_env_without_dropping_other_vars(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
