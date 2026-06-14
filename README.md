@@ -40,6 +40,9 @@ The bootstrap writes or updates:
 - `~/.codex/lmstudio.instructions.md`
 
 It creates timestamped backups before rewriting managed files.
+Generated profiles default to `model_max_output_tokens = 6144`, which is a
+better fit for weaker local models than very small output caps while still
+acting as a guardrail against runaway generation.
 
 By default the bundle uses this LM Studio inventory endpoint:
 

@@ -10,6 +10,7 @@ from unittest import mock
 from lmstudio_codex_bundle.bootstrap_cli import main as bootstrap_main
 from lmstudio_codex_bundle.bundle import (
     DEFAULT_INSTRUCTIONS_TEXT,
+    DEFAULT_MAX_OUTPUT_TOKENS,
     bootstrap,
     choose_profile_model,
     parse_env_file,
@@ -32,11 +33,17 @@ class BundleTests(unittest.TestCase):
                 result.env_path.read_text(),
             )
             self.assertIn('model_provider = "lmstudio"', result.profile_path.read_text())
+            self.assertIn(
+                f"model_max_output_tokens = {DEFAULT_MAX_OUTPUT_TOKENS}",
+                result.profile_path.read_text(),
+            )
             self.assertEqual(
                 result.instructions_path.read_text(encoding="utf-8"),
                 DEFAULT_INSTRUCTIONS_TEXT,
             )
             self.assertIn("read the nearest AGENTS.md file", DEFAULT_INSTRUCTIONS_TEXT)
+            self.assertIn("Keep user-facing text brief", DEFAULT_INSTRUCTIONS_TEXT)
+            self.assertIn("Do not repeat the same explanation", DEFAULT_INSTRUCTIONS_TEXT)
 
     def test_bootstrap_merges_env_without_dropping_other_vars(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -90,6 +97,10 @@ class BundleTests(unittest.TestCase):
         self.assertIn('[model_providers.lmstudio]', content)
         self.assertIn('model_provider = "lmstudio"', content)
         self.assertIn('model_catalog_json = "/tmp/model-catalog.local.json"', content)
+        self.assertIn(
+            f"model_max_output_tokens = {DEFAULT_MAX_OUTPUT_TOKENS}",
+            content,
+        )
         self.assertIn('model_instructions_file = "/tmp/lmstudio.instructions.md"', content)
         self.assertIn('base_url = "http://127.0.0.1:1234/v1"', content)
 

@@ -19,6 +19,7 @@ from lmstudio_codex_bundle.lmstudio_catalog import (
 
 DEFAULT_PROFILE_NAME = "lmstudio"
 DEFAULT_MODEL = "local-model"
+DEFAULT_MAX_OUTPUT_TOKENS = 6144
 MANAGED_HEADER = (
     "# Managed by the LM Studio Codex bundle.\n"
     "# Re-run the bootstrap command from this bundle to update this file.\n"
@@ -32,8 +33,11 @@ You are Codex running against a local LM Studio model.
 - If multiple AGENTS.md files apply, prefer the nearest one while still obeying higher-level instructions.
 - Do not guess about repository policy when AGENTS.md can answer it. Read the file first, then proceed.
 - Be precise and practical. Keep plans short and edits targeted.
+- Keep user-facing text brief unless the task clearly requires detail.
 - Expect capability variance across models. Verify assumptions before relying on tools, long context, or image support.
 - Prefer smaller, incremental steps when the task is ambiguous or the model appears unstable.
+- Use tools as soon as they are needed instead of narrating long intentions.
+- Do not repeat the same explanation, plan, or failed action. If progress stalls, acknowledge it and switch to a narrower approach.
 - If a result looks incomplete or inconsistent, say so directly and recover with a narrower approach.
 - Avoid claiming network access, external integrations, or provider features unless they are explicitly available in the current session.
 - When generating code, favor clear implementations and local verification over speculative abstraction.
@@ -161,6 +165,7 @@ def render_profile(
         + 'model_provider = "lmstudio"\n'
         + f'model = "{model}"\n'
         + f'model_catalog_json = "{catalog_path.expanduser()}"\n'
+        + f"model_max_output_tokens = {DEFAULT_MAX_OUTPUT_TOKENS}\n"
         + 'model_reasoning_effort = "medium"\n'
         + 'model_reasoning_summary = "auto"\n'
         + 'model_verbosity = "medium"\n'
