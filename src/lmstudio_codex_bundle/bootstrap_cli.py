@@ -21,6 +21,10 @@ def parse_args() -> argparse.Namespace:
         help="LM Studio inventory endpoint. Defaults to LMSTUDIO_INVENTORY_URL or the local default.",
     )
     parser.add_argument(
+        "--api-key",
+        help="LM Studio API key to store in ~/.codex/.env. Existing keys are preserved when omitted.",
+    )
+    parser.add_argument(
         "--model",
         default=None,
         help="Default model slug to place in the lmstudio profile. If omitted, the first catalog model is used when available.",
@@ -43,6 +47,7 @@ def main() -> int:
     codex_home = Path(args.codex_home).expanduser()
     result = bootstrap(
         inventory_url=args.inventory_url,
+        api_key=args.api_key,
         model=args.model,
         codex_home=codex_home,
     )

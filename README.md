@@ -6,7 +6,8 @@ models in Codex.
 ## What this bundle does
 
 - bootstraps a self-contained `lmstudio` Codex profile in `~/.codex`
-- stores a persistent LM Studio inventory endpoint in `~/.codex/.env`
+- stores a persistent LM Studio inventory endpoint and API key in
+  `~/.codex/.env`
 - syncs a live local model catalog from the LM Studio inventory endpoint
 - opens a curses TUI for browsing the live inventory and editing the local
   catalog
@@ -40,9 +41,11 @@ The bootstrap writes or updates:
 - `~/.codex/lmstudio.instructions.md`
 
 It creates timestamped backups before rewriting managed files.
-Generated profiles default to `model_max_output_tokens = 6144`, which is a
-better fit for weaker local models than very small output caps while still
-acting as a guardrail against runaway generation.
+Generated profiles default to
+`model_auto_compact_token_limit = 24000` with
+`model_auto_compact_token_limit_scope = "body_after_prefix"`, so Codex starts
+compacting conversation history before long local sessions overrun prompt
+budget.
 
 By default the bundle uses this LM Studio inventory endpoint:
 
@@ -50,13 +53,23 @@ By default the bundle uses this LM Studio inventory endpoint:
 http://127.0.0.1:1234/api/v0/models?q=
 ```
 
-You can override it during bootstrap:
+The generated `lmstudio` profile uses the custom provider identifier
+`lmstudio_codex`, avoiding Codex's reserved `lmstudio` provider name. It
+always reads its bearer token from `LMSTUDIO_API_KEY`. On first setup,
+bootstrap writes the placeholder `lm-studio`, which works when LM Studio
+authentication is disabled.
+
+You can override the endpoint, model, and API key during bootstrap:
 
 ```bash
 bash scripts/bootstrap_lmstudio_codex.sh \
   --inventory-url "http://127.0.0.1:1234/api/v0/models?q=" \
-  --model "openai/gpt-oss-20b"
+  --model "openai/gpt-oss-20b" \
+  --api-key "your-lm-studio-api-key"
 ```
+
+When `--api-key` is omitted on later runs, bootstrap preserves the existing
+`LMSTUDIO_API_KEY` value.
 
 ## Common commands
 
@@ -89,6 +102,9 @@ This bundle manages only these user-level files:
 
 It does not edit the base `~/.codex/config.toml`. The generated
 `lmstudio.config.toml` is self-contained and includes its own provider block.
+Re-running bootstrap migrates older generated profiles to the
+`lmstudio_codex` provider and creates a timestamped backup before replacing
+changed managed files.
 
 ## Development
 

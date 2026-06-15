@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from shlex import quote, split
 from urllib.parse import urlparse, urlunparse
 
 from lmstudio_codex_bundle.lmstudio_catalog import (
@@ -18,8 +19,12 @@ from lmstudio_codex_bundle.lmstudio_catalog import (
 
 
 DEFAULT_PROFILE_NAME = "lmstudio"
+DEFAULT_PROVIDER_NAME = "lmstudio_codex"
 DEFAULT_MODEL = "local-model"
-DEFAULT_MAX_OUTPUT_TOKENS = 6144
+DEFAULT_API_KEY_ENV_VAR = "LMSTUDIO_API_KEY"
+DEFAULT_API_KEY = "lm-studio"
+DEFAULT_AUTO_COMPACT_TOKEN_LIMIT = 24000
+DEFAULT_AUTO_COMPACT_TOKEN_LIMIT_SCOPE = "body_after_prefix"
 MANAGED_HEADER = (
     "# Managed by the LM Studio Codex bundle.\n"
     "# Re-run the bootstrap command from this bundle to update this file.\n"
@@ -78,13 +83,24 @@ def parse_env_file(path: Path) -> tuple[list[str], dict[str, str]]:
             line = line[len("export ") :].strip()
         if "=" not in line:
             continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
+        try:
+            parsed = split(line, comments=True)
+        except ValueError:
+            parsed = []
+        if len(parsed) == 1 and "=" in parsed[0]:
+            key, value = parsed[0].split("=", 1)
+        else:
+            key, value = line.split("=", 1)
+            value = value.strip().strip('"').strip("'")
+        values[key.strip()] = value
     return lines, values
 
 
 def render_env_file(existing_lines: list[str], values: dict[str, str]) -> str:
-    managed_keys = {DEFAULT_ENDPOINT_ENV_VAR}
+    managed_keys = {DEFAULT_ENDPOINT_ENV_VAR, DEFAULT_API_KEY_ENV_VAR}
+    for key in managed_keys:
+        if "\n" in values[key] or "\r" in values[key]:
+            raise ValueError(f"{key} must not contain newline characters")
     rendered: list[str] = []
     seen = set()
     for raw_line in existing_lines:
@@ -95,7 +111,7 @@ def render_env_file(existing_lines: list[str], values: dict[str, str]) -> str:
             key = line.split("=", 1)[0].strip()
             if key in managed_keys:
                 if key not in seen:
-                    rendered.append(f'{key}="{values[key]}"')
+                    rendered.append(f"{key}={quote(values[key])}")
                     seen.add(key)
                 continue
         rendered.append(raw_line)
@@ -103,15 +119,23 @@ def render_env_file(existing_lines: list[str], values: dict[str, str]) -> str:
     if rendered and rendered[-1] != "":
         rendered.append("")
 
-    for key in (DEFAULT_ENDPOINT_ENV_VAR,):
+    for key in (DEFAULT_ENDPOINT_ENV_VAR, DEFAULT_API_KEY_ENV_VAR):
         if key not in seen:
-            rendered.append(f'{key}="{values[key]}"')
+            rendered.append(f"{key}={quote(values[key])}")
     return "\n".join(rendered).rstrip() + "\n"
 
 
-def write_env_file(path: Path, inventory_url: str) -> Path | None:
+def write_env_file(
+    path: Path,
+    inventory_url: str,
+    api_key: str | None = None,
+) -> Path | None:
     existing_lines, values = parse_env_file(path)
     values[DEFAULT_ENDPOINT_ENV_VAR] = inventory_url
+    if api_key is not None:
+        values[DEFAULT_API_KEY_ENV_VAR] = api_key
+    elif DEFAULT_API_KEY_ENV_VAR not in values:
+        values[DEFAULT_API_KEY_ENV_VAR] = DEFAULT_API_KEY
     content = render_env_file(existing_lines, values)
     backup = (
         create_backup(path)
@@ -162,19 +186,21 @@ def render_profile(
     return (
         MANAGED_HEADER
         + "\n"
-        + 'model_provider = "lmstudio"\n'
+        + f'model_provider = "{DEFAULT_PROVIDER_NAME}"\n'
         + f'model = "{model}"\n'
         + f'model_catalog_json = "{catalog_path.expanduser()}"\n'
-        + f"model_max_output_tokens = {DEFAULT_MAX_OUTPUT_TOKENS}\n"
+        + f"model_auto_compact_token_limit = {DEFAULT_AUTO_COMPACT_TOKEN_LIMIT}\n"
+        + f'model_auto_compact_token_limit_scope = "{DEFAULT_AUTO_COMPACT_TOKEN_LIMIT_SCOPE}"\n'
         + 'model_reasoning_effort = "medium"\n'
         + 'model_reasoning_summary = "auto"\n'
         + 'model_verbosity = "medium"\n'
         + f'model_instructions_file = "{instructions_path.expanduser()}"\n'
         + "\n"
-        + "[model_providers.lmstudio]\n"
+        + f"[model_providers.{DEFAULT_PROVIDER_NAME}]\n"
         + 'name = "LM Studio"\n'
         + f'base_url = "{api_base_url}"\n'
         + 'wire_api = "responses"\n'
+        + f'env_key = "{DEFAULT_API_KEY_ENV_VAR}"\n'
     )
 
 
@@ -209,6 +235,7 @@ def write_instructions_file(path: Path) -> Path | None:
 def bootstrap(
     *,
     inventory_url: str | None = None,
+    api_key: str | None = None,
     model: str | None = None,
     codex_home: Path | None = None,
 ) -> BootstrapResult:
@@ -220,7 +247,7 @@ def bootstrap(
     resolved_inventory_url = resolve_inventory_url(inventory_url or DEFAULT_INVENTORY_URL)
     selected_model = choose_profile_model(catalog_path, model)
 
-    env_backup = write_env_file(env_path, resolved_inventory_url)
+    env_backup = write_env_file(env_path, resolved_inventory_url, api_key)
     instructions_backup = write_instructions_file(instructions_path)
     profile_backup = write_profile_file(
         profile_path,

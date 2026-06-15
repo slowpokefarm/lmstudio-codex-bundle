@@ -9,8 +9,12 @@ from unittest import mock
 
 from lmstudio_codex_bundle.bootstrap_cli import main as bootstrap_main
 from lmstudio_codex_bundle.bundle import (
+    DEFAULT_API_KEY,
+    DEFAULT_API_KEY_ENV_VAR,
+    DEFAULT_AUTO_COMPACT_TOKEN_LIMIT,
+    DEFAULT_AUTO_COMPACT_TOKEN_LIMIT_SCOPE,
     DEFAULT_INSTRUCTIONS_TEXT,
-    DEFAULT_MAX_OUTPUT_TOKENS,
+    DEFAULT_PROVIDER_NAME,
     bootstrap,
     choose_profile_model,
     parse_env_file,
@@ -28,13 +32,22 @@ class BundleTests(unittest.TestCase):
             self.assertTrue(result.env_path.exists())
             self.assertTrue(result.profile_path.exists())
             self.assertTrue(result.instructions_path.exists())
-            self.assertIn(
-                'LMSTUDIO_INVENTORY_URL="http://127.0.0.1:1234/api/v0/models?q="',
-                result.env_path.read_text(),
+            _, values = parse_env_file(result.env_path)
+            self.assertEqual(
+                values["LMSTUDIO_INVENTORY_URL"],
+                "http://127.0.0.1:1234/api/v0/models?q=",
             )
-            self.assertIn('model_provider = "lmstudio"', result.profile_path.read_text())
+            self.assertEqual(values[DEFAULT_API_KEY_ENV_VAR], DEFAULT_API_KEY)
             self.assertIn(
-                f"model_max_output_tokens = {DEFAULT_MAX_OUTPUT_TOKENS}",
+                f'model_provider = "{DEFAULT_PROVIDER_NAME}"',
+                result.profile_path.read_text(),
+            )
+            self.assertIn(
+                f"model_auto_compact_token_limit = {DEFAULT_AUTO_COMPACT_TOKEN_LIMIT}",
+                result.profile_path.read_text(),
+            )
+            self.assertIn(
+                f'model_auto_compact_token_limit_scope = "{DEFAULT_AUTO_COMPACT_TOKEN_LIMIT_SCOPE}"',
                 result.profile_path.read_text(),
             )
             self.assertEqual(
@@ -56,6 +69,42 @@ class BundleTests(unittest.TestCase):
             _, values = parse_env_file(env_path)
             self.assertEqual(values["FOO"], "bar")
             self.assertEqual(values["LMSTUDIO_INVENTORY_URL"], "http://new/api/v0/models?q=")
+            self.assertEqual(values[DEFAULT_API_KEY_ENV_VAR], DEFAULT_API_KEY)
+
+    def test_bootstrap_preserves_existing_api_key_when_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env_path = Path(tmpdir) / ".env"
+            env_path.write_text(
+                f'{DEFAULT_API_KEY_ENV_VAR}="existing-secret"\n',
+                encoding="utf-8",
+            )
+            bootstrap(codex_home=Path(tmpdir))
+            _, values = parse_env_file(env_path)
+            self.assertEqual(values[DEFAULT_API_KEY_ENV_VAR], "existing-secret")
+
+    def test_bootstrap_replaces_existing_api_key_when_supplied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env_path = Path(tmpdir) / ".env"
+            env_path.write_text(
+                f'{DEFAULT_API_KEY_ENV_VAR}="existing-secret"\n',
+                encoding="utf-8",
+            )
+            result = bootstrap(api_key="replacement-secret", codex_home=Path(tmpdir))
+            _, values = parse_env_file(env_path)
+            self.assertEqual(values[DEFAULT_API_KEY_ENV_VAR], "replacement-secret")
+            self.assertIsNotNone(result.env_backup)
+
+    def test_bootstrap_shell_quotes_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            api_key = "quote'-$HOME-`command`"
+            result = bootstrap(api_key=api_key, codex_home=Path(tmpdir))
+            _, values = parse_env_file(result.env_path)
+            self.assertEqual(values[DEFAULT_API_KEY_ENV_VAR], api_key)
+
+    def test_bootstrap_rejects_multiline_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaisesRegex(ValueError, DEFAULT_API_KEY_ENV_VAR):
+                bootstrap(api_key="line-one\nline-two", codex_home=Path(tmpdir))
 
     def test_bootstrap_creates_backups_when_rewriting_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -94,11 +143,17 @@ class BundleTests(unittest.TestCase):
             Path("/tmp/lmstudio.instructions.md"),
             "http://127.0.0.1:1234/api/v0/models?q=",
         )
-        self.assertIn('[model_providers.lmstudio]', content)
-        self.assertIn('model_provider = "lmstudio"', content)
+        self.assertIn(f'[model_providers.{DEFAULT_PROVIDER_NAME}]', content)
+        self.assertIn(f'model_provider = "{DEFAULT_PROVIDER_NAME}"', content)
+        self.assertIn(f'env_key = "{DEFAULT_API_KEY_ENV_VAR}"', content)
+        self.assertNotIn("requires_openai_auth", content)
         self.assertIn('model_catalog_json = "/tmp/model-catalog.local.json"', content)
         self.assertIn(
-            f"model_max_output_tokens = {DEFAULT_MAX_OUTPUT_TOKENS}",
+            f"model_auto_compact_token_limit = {DEFAULT_AUTO_COMPACT_TOKEN_LIMIT}",
+            content,
+        )
+        self.assertIn(
+            f'model_auto_compact_token_limit_scope = "{DEFAULT_AUTO_COMPACT_TOKEN_LIMIT_SCOPE}"',
             content,
         )
         self.assertIn('model_instructions_file = "/tmp/lmstudio.instructions.md"', content)
@@ -120,6 +175,8 @@ class BundleTests(unittest.TestCase):
                 "http://127.0.0.1:1234/api/v0/models?q=",
                 "--codex-home",
                 tmpdir,
+                "--api-key",
+                "cli-secret",
                 "--skip-sync",
             ]
             with mock.patch("sys.argv", argv):
@@ -129,6 +186,8 @@ class BundleTests(unittest.TestCase):
             self.assertTrue((Path(tmpdir) / ".env").exists())
             self.assertTrue((Path(tmpdir) / "lmstudio.config.toml").exists())
             self.assertTrue((Path(tmpdir) / "lmstudio.instructions.md").exists())
+            _, values = parse_env_file(Path(tmpdir) / ".env")
+            self.assertEqual(values[DEFAULT_API_KEY_ENV_VAR], "cli-secret")
 
 
 if __name__ == "__main__":
